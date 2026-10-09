@@ -326,7 +326,6 @@ const SB_URL = 'https://yqzvrvuqybounqzisyan.supabase.co';
 const SB_KEY = 'sb_publishable_3sDDYyXO4i_dqdza2D9T4g_ox5BDoy1';
 const sbHeaders = {
   apikey: SB_KEY,
-  Authorization: `Bearer ${SB_KEY}`,
   'Content-Type': 'application/json'
 };
 
@@ -341,7 +340,16 @@ async function submitScore(name, score, accuracy, streak) {
 
 async function loadLeaderboard() {
   const list = document.getElementById('lb-list');
-  list.textContent = 'Loading...';
+
+  const showMsg = text => {
+    list.textContent = '';
+    const li = document.createElement('li');
+    li.className = 'lb-msg';
+    li.textContent = text;
+    list.appendChild(li);
+  };
+
+  showMsg('Loading...');
   try {
     const res = await fetch(
       `${SB_URL}/rest/v1/scores?select=name,score,streak&order=score.desc,streak.desc&limit=10`,
@@ -349,14 +357,28 @@ async function loadLeaderboard() {
     );
     if (!res.ok) throw new Error('Load failed');
     const rows = await res.json();
+    if (!rows.length) return showMsg('No scores yet. Be the first!');
+
     list.textContent = '';
-    rows.forEach(r => {
+    rows.forEach((r, i) => {
       const li = document.createElement('li');
-      li.textContent = `${r.name} – ${r.score} (streak ${r.streak})`; // textContent avoids XSS
+      const parts = [
+        ['lb-rank', i + 1],
+        ['lb-name', r.name],
+        ['lb-score', r.score],
+        ['lb-streak', `streak ${r.streak}`]
+      ];
+      parts.forEach(([cls, text]) => {
+        const span = document.createElement('span');
+        span.className = cls;
+        span.textContent = text;   // textContent keeps names safe from XSS
+        li.appendChild(span);
+      });
       list.appendChild(li);
     });
-  } catch {
-    list.textContent = 'Could not load leaderboard.';
+  } catch (e) {
+    console.error(e);
+    showMsg('Could not load leaderboard.');
   }
 }
 
