@@ -322,7 +322,7 @@ const emails = [
 
 //----------------------------------------------------------------- LEADERBOARD (SUPABASE) -------------------------------------------------------------------------------------------------------//
 
-const SB_URL = 'https://yqzvrvuqybounqzisyan.supabase.co/rest/v1/';
+const SB_URL = 'https://yqzvrvuqybounqzisyan.supabase.co';
 const SB_KEY = 'sb_publishable_3sDDYyXO4i_dqdza2D9T4g_ox5BDoy1';
 const sbHeaders = {
   apikey: SB_KEY,
