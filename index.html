@@ -78,9 +78,16 @@
     <p><strong>Accuracy:</strong> <span id="final-accuracy"></span></p>
     <p><strong>Best Streak:</strong> <span id="final-streak"></span></p>
   </div>
-  <button id="end-btn" class="btn fin-btn">End</button>
+  <input id="player-name" maxlength="12" placeholder="Your name" />
+  <button id="end-btn" class="btn fin-btn">Submit Score</button>
 </div>
 
+<!-- LEADERBOARD -->
+<div id="screen-leaderboard" class="screen">
+  <h2>Leaderboard</h2>
+  <ol id="lb-list"></ol>
+  <button id="lb-home-btn" class="btn btn-primary">Back to Start</button>
+</div>
 
 <!-- TIPS CARD -->
 <div id="tips-card" class="hidden">
