@@ -4,7 +4,7 @@ function shuffle(array) {
     const j = Math.floor(Math.random() * (i + 1));
     [array[i], array[j]] = [array[j], array[i]];
   }
-};
+}
 
 
 //----------------------------------------------------------------- NEGATIVE PHISHING TIPS ARRAY ----------------------------------------------------------------------------------------------------//
@@ -51,40 +51,36 @@ const positiveTips = [
 ];
 
 
-//----------------------------------------------------------------- NEGATIVE TIPS FUNCTION ----------------------------------------------------------------------------------------------------------//
+//----------------------------------------------------------------- TIPS FUNCTIONS ----------------------------------------------------------------------------------------------------------//
 
 function getRandomTip() {
-  const i = Math.floor(Math.random() * tips.length);
-  return tips[i];
-};
-
-
-//----------------------------------------------------------------- POSITIVE TIPS FUNCTION ----------------------------------------------------------------------------------------------------------//
+  return tips[Math.floor(Math.random() * tips.length)];
+}
 
 function getRandomPositiveTip() {
-  const i = Math.floor(Math.random() * positiveTips.length);
-  return positiveTips[i];
-};
+  return positiveTips[Math.floor(Math.random() * positiveTips.length)];
+}
 
 
-//----------------------------------------------------------------- ELEMENTS ---------------------------------------------------------------------------------------------------------------------------//
+//----------------------------------------------------------------- STATE + SCREENS ---------------------------------------------------------------------------------------------------------------//
+
 let index = 0;
 let correct = 0;
 let streak = 0;
 let bestStreak = 0;
 let answered = false;
 
-/* ELEMENTS */
 const screens = {
   home: document.getElementById("screen-home"),
   game: document.getElementById("screen-game"),
-  results: document.getElementById("screen-results")
+  results: document.getElementById("screen-results"),
+  leaderboard: document.getElementById("screen-leaderboard")
 };
 
 function showScreen(name) {
-  Object.values(screens).forEach(s => s.classList.remove("active"));
-  screens[name].classList.add("active");
-};
+  Object.values(screens).forEach(s => s && s.classList.remove("active"));
+  if (screens[name]) screens[name].classList.add("active");
+}
 
 
 //----------------------------------------------------------------- GAME LOGIC -----------------------------------------------------------------------------------------------------------------------//
@@ -94,14 +90,13 @@ const elSubject = document.getElementById("subject");
 const elBody = document.getElementById("body");
 const elFeedback = document.getElementById("feedback");
 
-
 function loadEmail() {
   const email = emails[index];
   elFrom.innerHTML = email.from;
   elSubject.innerHTML = email.subject;
   elBody.innerHTML = email.body;
   elFeedback.innerHTML = "";
-};
+}
 
 
 //----------------------------------------------------------------- TIPS CARD ---------------------------------------------------------------------------------------------------------------------------//
@@ -109,19 +104,15 @@ function loadEmail() {
 const tipsCard = document.getElementById("tips-card");
 const tipsMessage = document.getElementById("tips-message");
 const tipsClose = document.getElementById("tips-close");
-const nextBtn = document.getElementById("btn-next");
 
 function showTip(message) {
   tipsMessage.textContent = message;
   tipsCard.classList.remove("hidden");
-  nextBtn.disabled = true;
 }
 
 tipsClose.addEventListener("click", () => {
   tipsCard.classList.add("hidden");
-
-
-
+  answered = false;
   index++;
 
   if (index >= emails.length) {
@@ -132,36 +123,13 @@ tipsClose.addEventListener("click", () => {
 });
 
 
-//----------------------------------------------------------------- SAFE BUTTON --------------------------------------------------------------------------------------------------------------------------//
+//----------------------------------------------------------------- ANSWER BUTTONS --------------------------------------------------------------------------------------------------------------------//
 
-document.getElementById("btn-safe").addEventListener("click", () => {
-  const email = emails[index];
-  const isCorrect = email.isPhish === false;
+function handleAnswer(guessPhish) {
+  if (answered) return;
+  answered = true;
 
- if (isCorrect) {
-    correct++;
-    streak++;
-    if (streak > bestStreak) bestStreak = streak;
-
-    
-    playCorrectSound();
-    showTip("Correct! " + getRandomPositiveTip());
-  } else {
-    streak = 0;
-    triggerPoliceAlert();
-
-    setTimeout(() => {
-      showTip("Incorrect. " + getRandomTip());
-    }, 2000);
-  }
-});
-
-
-//----------------------------------------------------------------- PHISHING BUTTON ----------------------------------------------------------------------------------------------------------------------//
-
-document.getElementById("btn-phish").addEventListener("click", () => {
-  const email = emails[index];
-  const isCorrect = email.isPhish === true;
+  const isCorrect = emails[index].isPhish === guessPhish;
 
   if (isCorrect) {
     correct++;
@@ -172,12 +140,14 @@ document.getElementById("btn-phish").addEventListener("click", () => {
   } else {
     streak = 0;
     triggerPoliceAlert();
-
     setTimeout(() => {
       showTip("Incorrect. " + getRandomTip());
     }, 2000);
   }
-});
+}
+
+document.getElementById("btn-safe").onclick = () => handleAnswer(false);
+document.getElementById("btn-phish").onclick = () => handleAnswer(true);
 
 
 //----------------------------------------------------------------- RESULTS FUNCTION --------------------------------------------------------------------------------------------------------------------//
@@ -188,7 +158,7 @@ function showResults() {
   document.getElementById("final-score").textContent = `${correct} / ${emails.length}`;
   document.getElementById("final-accuracy").textContent = `${accuracy}%`;
   document.getElementById("final-streak").textContent = bestStreak;
-};
+}
 
 
 //----------------------------------------------------------------- FRONT PAGE BUTTON -------------------------------------------------------------------------------------------------------------------//
@@ -198,8 +168,9 @@ document.getElementById("start-btn").onclick = () => {
   correct = 0;
   streak = 0;
   bestStreak = 0;
+  answered = false;
 
-  shuffle(emails)
+  shuffle(emails);
 
   loadEmail();
   showScreen("game");
@@ -223,7 +194,7 @@ const emails = [
     `,
     isPhish: true
   },
-    {
+  {
     from: "info@outlook-support.dk",
     subject: "MS Outlook Support",
     body: `
@@ -267,7 +238,7 @@ const emails = [
     `,
     isPhish: true
   },
-   {
+  {
     from: "NHS Appointments noreply@nhs.net",
     subject: "Appointment Reminder",
     body: `
@@ -277,7 +248,7 @@ const emails = [
     `,
     isPhish: false
   },
-   {
+  {
     from: "Apple Support security@appleid-lock.com",
     subject: "Your Apple ID has been locked",
     body: `
@@ -288,54 +259,54 @@ const emails = [
     `,
     isPhish: true
   },
-   {
-  from: "Amazon no-reply@amazon.co.uk",
-  subject: "Your Amazon order has been dispatched",
-  body: `
-  <img src="images/Amazon.png" class="center" width="100" height="100" alt="amazon logo">
+  {
+    from: "Amazon no-reply@amazon.co.uk",
+    subject: "Your Amazon order has been dispatched",
+    body: `
+    <img src="images/Amazon.png" class="center" width="100" height="100" alt="amazon logo">
     <p>Your order has been dispatched and will arrive tomorrow.</p>
     <p>Track your parcel in Your Orders.</p>
-  `,
-  isPhish: false
-},
+    `,
+    isPhish: false
+  },
   {
-  from: "HMRC refund@tax-service-gov.uk",
-  subject: "You are owed a tax refund",
-  body: `
-  <img src="images/HMRC-Logo.png" class="left" width="100" height="100" alt="hmrc logo">
+    from: "HMRC refund@tax-service-gov.uk",
+    subject: "You are owed a tax refund",
+    body: `
+    <img src="images/HMRC-Logo.png" class="left" width="100" height="100" alt="hmrc logo">
     <p>After our annual review, you are eligible for a tax refund of £274.19 from 2020 to 2021.</p>
     <p> Follow the instructions to claim your tax refund below.</p>
     <p>You <u>MUST</u> Submit your claim within 48 hours.</p>
     <p><a href="#">Claim Refund</a></p>
-  `,
-  isPhish: true
-},
+    `,
+    isPhish: true
+  },
   {
-  from: "Netflix info@account.netflix.com",
-  subject: "Update required - Netflix account on hold",
-  body: `
-  <img src="images/netflix-logo.jpg" class="center" width="150" height="150" alt="netflix logo">
+    from: "Netflix info@account.netflix.com",
+    subject: "Update required - Netflix account on hold",
+    body: `
+    <img src="images/netflix-logo.jpg" class="center" width="150" height="150" alt="netflix logo">
     <p><b>Please update your payment details.</b></p>
     <p>We're having some trouble with your current billing information. We'll try again, but in the meantime you may want to update your payment details.</p>
     <p><a href="#">Update Account Now</a></p>
-  `,
-  isPhish: false
-},
+    `,
+    isPhish: false
+  },
   {
-  from: "Coleg Sir Gâr info@colegsirgar.ac.uk",
-  subject: "Important student notice",
-  body: `
-  <img src="images/colegsirgar.png" class="left" width="150" height="150" alt="welsh college logo">
+    from: "Coleg Sir Gâr info@colegsirgar.ac.uk",
+    subject: "Important student notice",
+    body: `
+    <img src="images/colegsirgar.png" class="left" width="150" height="150" alt="welsh college logo">
     <p>We have updated our student handbook for the new term.</p>
     <p>Please review the changes on the student portal.</p>
-  `,
-  isPhish: false
-},
+    `,
+    isPhish: false
+  },
   {
-  from: "rnicrosoft Account no-reply@microsoft.com",
-  subject: "Your microsoft account password is expiring soon",
-  body: `
-  <img src="images/outlook2.png" class="left" width="150" height="150" alt="outlook logo">
+    from: "rnicrosoft Account no-reply@microsoft.com",
+    subject: "Your microsoft account password is expiring soon",
+    body: `
+    <img src="images/outlook2.png" class="left" width="150" height="150" alt="outlook logo">
     <h2>Password Expiry Notification</h2>
     <p>Dear User,</p>
     <p>This is a courtesy reminder that your Microsoft account password will expire in <strong>3 days</strong>.</p>
@@ -343,22 +314,13 @@ const emails = [
     <p><a href="https://account.microsoft.com/security" target="_blank" rel="noopener noreferrer">Update Password</a></p>
     <p>Thank you for helping us keep your account secure.</p>
     <p>— Microsoft Account Team</p>
-  `,
-  isPhish: true
-},
+    `,
+    isPhish: true
+  }
 ];
 
 
-//----------------------------------------------------------------- RETURN TO START ----------------------------------------------------------------------------------------------------------//
-
-document.getElementById("end-btn").onclick = () => {
-  index = 0;
-  correct = 0;
-  streak = 0;
-  bestStreak = 0;
-
-  showScreen("home");
-};
+//----------------------------------------------------------------- LEADERBOARD (SUPABASE) -------------------------------------------------------------------------------------------------------//
 
 const SB_URL = 'https://YOUR-PROJECT.supabase.co';
 const SB_KEY = 'YOUR-ANON-KEY';
@@ -368,17 +330,13 @@ const sbHeaders = {
   'Content-Type': 'application/json'
 };
 
-function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-}
-
 async function submitScore(name, score, accuracy, streak) {
-  await fetch(`${SB_URL}/rest/v1/scores`, {
+  const res = await fetch(`${SB_URL}/rest/v1/scores`, {
     method: 'POST',
     headers: { ...sbHeaders, Prefer: 'return=minimal' },
     body: JSON.stringify({ name, score, accuracy, streak })
   });
+  if (!res.ok) throw new Error('Score submit failed');
 }
 
 async function loadLeaderboard() {
@@ -389,6 +347,7 @@ async function loadLeaderboard() {
       `${SB_URL}/rest/v1/scores?select=name,score,streak&order=score.desc,streak.desc&limit=10`,
       { headers: sbHeaders }
     );
+    if (!res.ok) throw new Error('Load failed');
     const rows = await res.json();
     list.textContent = '';
     rows.forEach(r => {
@@ -401,15 +360,32 @@ async function loadLeaderboard() {
   }
 }
 
-document.getElementById('end-btn').addEventListener('click', async () => {
-  const name = document.getElementById('player-name').value.trim() || 'Anon';
-  // replace these three with however your game stores them
-  await submitScore(name, finalScore, finalAccuracy, bestStreak);
-  await loadLeaderboard();
-  showScreen('screen-leaderboard');
-});
 
-document.getElementById('lb-home-btn').addEventListener('click', () => showScreen('screen-home'));
+//----------------------------------------------------------------- SUBMIT / END BUTTON ----------------------------------------------------------------------------------------------------------//
+
+document.getElementById("end-btn").onclick = async () => {
+  const btn = document.getElementById("end-btn");
+  btn.disabled = true;
+
+  const nameInput = document.getElementById("player-name");
+  const name = (nameInput && nameInput.value.trim()) || "Anon";
+  const accuracy = Math.round((correct / emails.length) * 100);
+
+  try {
+    await submitScore(name, correct, accuracy, bestStreak);
+  } catch {}
+
+  await loadLeaderboard();
+  showScreen("leaderboard");
+  btn.disabled = false;
+};
+
+document.getElementById("lb-home-btn").onclick = () => {
+  const nameInput = document.getElementById("player-name");
+  if (nameInput) nameInput.value = "";
+  showScreen("home");
+};
+
 
 //----------------------------------------------------------------- CORRECT ANSWER -----------------------------------------------------------------------------------------------------------//
 
@@ -428,25 +404,16 @@ function triggerPoliceAlert() {
   const alertOverlay = document.getElementById("police-alert");
   const siren = document.getElementById("siren-sound");
 
-
-//----------------------------------------------------------------- SHOW FLASHING OVERLAY ----------------------------------------------------------------------------------------------------//
-
   alertOverlay.style.display = "block";
-
-
-//----------------------------------------------------------------- PLAY SOUNDS ---------------------------------------------------------------------------------------------------------------//
 
   if (siren) {
     siren.currentTime = 0;
     siren.play().catch(() => {});
-  };
-
-  
-//----------------------------------------------------------------- AUTO STOP AFTER 2S -------------------------------------------------------------------------------------------------------//
+  }
 
   setTimeout(() => {
     alertOverlay.style.display = "none";
     if (siren) siren.pause();
   }, 2000);
-};
+}
 //----------------------------------------------------------------- END OF CODE --------------------------------------------------------------------------------------------------------------//
