@@ -360,6 +360,56 @@ document.getElementById("end-btn").onclick = () => {
   showScreen("home");
 };
 
+const SB_URL = 'https://YOUR-PROJECT.supabase.co';
+const SB_KEY = 'YOUR-ANON-KEY';
+const sbHeaders = {
+  apikey: SB_KEY,
+  Authorization: `Bearer ${SB_KEY}`,
+  'Content-Type': 'application/json'
+};
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+async function submitScore(name, score, accuracy, streak) {
+  await fetch(`${SB_URL}/rest/v1/scores`, {
+    method: 'POST',
+    headers: { ...sbHeaders, Prefer: 'return=minimal' },
+    body: JSON.stringify({ name, score, accuracy, streak })
+  });
+}
+
+async function loadLeaderboard() {
+  const list = document.getElementById('lb-list');
+  list.textContent = 'Loading...';
+  try {
+    const res = await fetch(
+      `${SB_URL}/rest/v1/scores?select=name,score,streak&order=score.desc,streak.desc&limit=10`,
+      { headers: sbHeaders }
+    );
+    const rows = await res.json();
+    list.textContent = '';
+    rows.forEach(r => {
+      const li = document.createElement('li');
+      li.textContent = `${r.name} – ${r.score} (streak ${r.streak})`; // textContent avoids XSS
+      list.appendChild(li);
+    });
+  } catch {
+    list.textContent = 'Could not load leaderboard.';
+  }
+}
+
+document.getElementById('end-btn').addEventListener('click', async () => {
+  const name = document.getElementById('player-name').value.trim() || 'Anon';
+  // replace these three with however your game stores them
+  await submitScore(name, finalScore, finalAccuracy, bestStreak);
+  await loadLeaderboard();
+  showScreen('screen-leaderboard');
+});
+
+document.getElementById('lb-home-btn').addEventListener('click', () => showScreen('screen-home'));
 
 //----------------------------------------------------------------- CORRECT ANSWER -----------------------------------------------------------------------------------------------------------//
 
