@@ -69,6 +69,7 @@ let correct = 0;
 let streak = 0;
 let bestStreak = 0;
 let answered = false;
+let foundFlags = new Set();
 
 const screens = {
   home: document.getElementById("screen-home"),
@@ -83,19 +84,97 @@ function showScreen(name) {
 }
 
 
-//----------------------------------------------------------------- GAME LOGIC -----------------------------------------------------------------------------------------------------------------------//
+//----------------------------------------------------------------- EMAIL CARD (CLIENT LOOK + INSPECTION) -------------------------------------------------------------------------------------//
 
-const elFrom = document.getElementById("from");
-const elSubject = document.getElementById("subject");
-const elBody = document.getElementById("body");
+const emailCard = document.querySelector("#screen-game .email-card");
 const elFeedback = document.getElementById("feedback");
+
+const DEFAULT_INSPECTOR = "Tap anything that looks suspicious: the sender, spelling, grammar or links.";
+const DEFAULT_STATUS = "Hover over a link to see where it really goes";
 
 function loadEmail() {
   const email = emails[index];
-  elFrom.innerHTML = email.from;
-  elSubject.innerHTML = email.subject;
-  elBody.innerHTML = email.body;
+  foundFlags = new Set();
+
+  const initial = (email.initial || email.name.replace(/<[^>]*>/g, "").trim().charAt(0)).toUpperCase();
+
+  emailCard.innerHTML = `
+    <div class="email-subject">${email.subject}</div>
+    <div class="email-sender">
+      <div class="avatar" style="background:${email.color}">${initial}</div>
+      <div class="sender-info">
+        <div class="sender-line">
+          <span class="sender-name">${email.name}</span>
+          <span class="sender-addr">&lt;${email.addr}&gt;</span>
+        </div>
+        <div class="sender-to">to me</div>
+      </div>
+      <div class="email-date">${email.date}</div>
+    </div>
+    <div class="email-body">${email.body}</div>
+    <div class="inspector" id="inspector">${DEFAULT_INSPECTOR}</div>
+    <div class="status-row">
+      <span id="link-status">${DEFAULT_STATUS}</span>
+      <span id="flag-count">🚩 0</span>
+    </div>
+  `;
   elFeedback.innerHTML = "";
+}
+
+function setInspector(text, kind) {
+  const box = document.getElementById("inspector");
+  box.textContent = text;
+  box.className = "inspector " + (kind || "");
+}
+
+function setStatus(url) {
+  document.getElementById("link-status").textContent = url ? "🔗 " + url : DEFAULT_STATUS;
+}
+
+function updateFlagCount() {
+  document.getElementById("flag-count").textContent = "🚩 " + foundFlags.size;
+}
+
+// Hovering a link shows where it REALLY goes (never navigates anywhere)
+emailCard.addEventListener("mouseover", e => {
+  const link = e.target.closest("a");
+  if (link) setStatus(link.dataset.url);
+});
+
+emailCard.addEventListener("mouseout", e => {
+  if (e.target.closest("a")) setStatus("");
+});
+
+emailCard.addEventListener("click", e => {
+  const link = e.target.closest("a");
+  if (link) {
+    e.preventDefault();
+    setStatus(link.dataset.url); // so touch devices can see the destination too
+  }
+
+  const flag = e.target.closest(".flag");
+  if (flag) {
+    foundFlags.add(flag);
+    flag.classList.add("found");
+    flag.classList.remove("missed");
+    updateFlagCount();
+    setInspector("🚩 " + flag.dataset.tip, "is-flag");
+  } else if (e.target.closest(".email-body, .email-sender, .email-subject")) {
+    setInspector("Nothing suspicious about that.", "is-ok");
+  }
+});
+
+// After answering: reveal every red flag and build the explanation for the tip card
+function buildDebrief(email) {
+  const flags = [...emailCard.querySelectorAll(".flag")];
+  const missed = flags.filter(f => !foundFlags.has(f));
+
+  flags.forEach(f => f.classList.add(foundFlags.has(f) ? "found" : "missed"));
+
+  const out = [email.why];
+  if (flags.length) out.push(`You spotted ${flags.length - missed.length} of ${flags.length} red flags.`);
+  missed.forEach(f => out.push("Missed: " + f.dataset.tip));
+  return out;
 }
 
 
@@ -105,8 +184,19 @@ const tipsCard = document.getElementById("tips-card");
 const tipsMessage = document.getElementById("tips-message");
 const tipsClose = document.getElementById("tips-close");
 
-function showTip(message) {
+const tipsDetails = document.createElement("ul");
+tipsDetails.id = "tips-details";
+tipsMessage.insertAdjacentElement("afterend", tipsDetails);
+
+function showTip(message, details = []) {
   tipsMessage.textContent = message;
+  tipsDetails.textContent = "";
+  details.forEach((text, i) => {
+    const li = document.createElement("li");
+    li.textContent = text;
+    if (i === 0) li.className = "tips-why";
+    tipsDetails.appendChild(li);
+  });
   tipsCard.classList.remove("hidden");
 }
 
@@ -129,19 +219,21 @@ function handleAnswer(guessPhish) {
   if (answered) return;
   answered = true;
 
-  const isCorrect = emails[index].isPhish === guessPhish;
+  const email = emails[index];
+  const isCorrect = email.isPhish === guessPhish;
+  const details = buildDebrief(email);
 
   if (isCorrect) {
     correct++;
     streak++;
     if (streak > bestStreak) bestStreak = streak;
     playCorrectSound();
-    showTip("Correct! " + getRandomPositiveTip());
+    showTip("Correct! " + getRandomPositiveTip(), details);
   } else {
     streak = 0;
     triggerPoliceAlert();
     setTimeout(() => {
-      showTip("Incorrect. " + getRandomTip());
+      showTip("Incorrect. " + getRandomTip(), details);
     }, 2000);
   }
 }
@@ -177,145 +269,195 @@ document.getElementById("start-btn").onclick = () => {
 };
 
 
+//----------------------------------------------------------------- EMAIL DATA HELPERS ----------------------------------------------------------------------------------------------------------------//
+// F(text, tip)       -> a hidden "red flag" the player can find by tapping it (spelling, grammar, sender, wording)
+// L(text, url, tip)  -> a link. Hovering/tapping shows the REAL url. Add a tip if the link itself is a red flag.
+
+const esc = s => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+
+const F = (text, tip) => `<span class="flag" data-tip="${esc(tip)}">${text}</span>`;
+
+const L = (text, url, tip) =>
+  tip
+    ? `<a href="#" class="flag" data-url="${esc(url)}" data-tip="${esc(tip)}">${text}</a>`
+    : `<a href="#" data-url="${esc(url)}">${text}</a>`;
+
+
 //----------------------------------------------------------------- EMAIL DATA --------------------------------------------------------------------------------------------------------------------------//
 
 const emails = [
   {
-    from: "info.wwypv@phc.diocesewnc.org",
-    subject: "We've received 62 complaints about your Email - ID:WKNOM",
+    name: "iCloud Support",
+    addr: F("info.wwypv@phc.diocesewnc.org", "Random-looking address on a diocese (church) domain. Nothing to do with Apple or iCloud."),
+    color: "#3b82f6",
+    date: "Tue 6 Oct, 09:14",
+    subject: F("We've received 62 complaints about your Email - ID:WKNOM", "The subject has nothing to do with the message (it is about storage). Odd claims and fake ID codes are used to look official."),
     body: `
-      <p>Your iClod storage is almost full. Once you exceed your storage limit, you will no longer be able to back up
+      <p>Your ${F("iClod", "Misspelt brand name. Apple’s service is called iCloud.")} storage is almost full. Once you exceed your storage limit, you will no longer be able to back up
       your photos, documents, contacts, and device data. This means your new
       photos and videos will stop uploading to iCloud, and cloud storage as well as cloud apps
-      will no longer be updated accross your devices.</p><br>
+      will no longer be updated ${F("accross", "Spelling mistake: “across”. Real companies proof-read their emails.")} your devices.</p>
       <p>We understand how important it is to keep your data safe.<br>
-      Thats why we're offering you an exclusive deal. Click the button below to get 50GB of free storage!</P>
-      <p><a href="#">Get 50GB Free</a></p>
+      ${F("Thats", "Missing apostrophe: “That’s”. Sloppy grammar is a classic warning sign.")} why we're offering you an exclusive deal. Click the button below to get 50GB of free storage!</p>
+      <p>${L("Get 50GB Free", "http://icloud-storage-bonus.xyz/claim?id=62", "Too-good-to-be-true offer, and the link goes to a random .xyz site, not apple.com or icloud.com.")}</p>
     `,
-    isPhish: true
+    isPhish: true,
+    why: "Phishing: the sender is unrelated to Apple, there are spelling and grammar mistakes, and the “free storage” link goes to a random website."
   },
   {
-    from: "info@outlook-support.dk",
+    name: "Outlook Support",
+    addr: F("info@outlook-support.dk", "Microsoft doesn’t email from a .dk support domain. Real Microsoft emails come from microsoft.com."),
+    color: "#0078d4",
+    date: "Tue 6 Oct, 11:02",
     subject: "MS Outlook Support",
     body: `
     <img src="images/outlook2.png" class="left" width="150" height="150" alt="outlook logo">
-     <br> Dear User,
-      <p>All Hotmail customers have been upgraded to Outlook.com. Youre Hotmail Account services has expired.</p><br>
-      <p>Due to our new system upgrade to Outlook. In order for it to remain active<br>follow the link sign in Re-activate your account to Outlook.<br>
-      <p><a href="#">https://www.account.live.com</a></p>
-      <p>Thanks,</p>
-      <p>Microsoft Support Team</p>
+      <p>${F("Dear User", "Generic greeting. A real provider would use your name.")},</p>
+      <p>All Hotmail customers have been upgraded to Outlook.com. ${F("Youre Hotmail Account services has expired", "Grammar mistakes (“Your Hotmail account services have expired”). Also a scare tactic.")}.</p>
+      <p>Due to our new system upgrade to Outlook. In order for it to remain active, follow the link sign in Re-activate your account to Outlook.</p>
+      <p>${L("https://www.account.live.com", "http://outlook-reactivate.dk/login", "The link text says account.live.com but it really goes somewhere else. Always check where a link goes before clicking.")}</p>
+      <p>Thanks,<br>Microsoft Support Team</p>
     `,
-    isPhish: true
+    isPhish: true,
+    why: "Phishing: the sender isn’t Microsoft, the greeting is generic, the grammar is poor, and the link text hides a different destination."
   },
   {
-    from: "Sky sky@notifications.contact.sky",
+    name: "Sky",
+    addr: "sky@notifications.contact.sky",
+    color: "#1d4ed8",
+    date: "Mon 5 Oct, 18:41",
     subject: "Your password has been changed",
     body: `
     <img src="images/sky.jpg" class="center" width="150" height="150" alt="sky logo">
-      <h2>Your password has been changed</h2><br>
-       <p>
-    As requested, we've changed the password that you use to sign into Sky services. 
-    You will no longer be able to sign in using any of your previous passwords.
-  </p>
-  <p>
-    If you didn't ask us to change your password, 
-    <a href="https://www.sky.com/help" target="_blank" rel="noopener noreferrer">
-      contact us
-    </a> so we can help keep your account secure.
-  </p>
+      <h2>Your password has been changed</h2>
+      <p>As requested, we've changed the password that you use to sign into Sky services.
+      You will no longer be able to sign in using any of your previous passwords.</p>
+      <p>If you didn't ask us to change your password, ${L("contact us", "https://www.sky.com/help")} so we can help keep your account secure.</p>
     `,
-    isPhish: false
+    isPhish: false,
+    why: "Legit: the sender domain belongs to Sky, the link goes to sky.com, the writing is clean and nothing pressures you to act."
   },
   {
-    from: "Royal Mail delivery@royalmail-fee.co.uk",
+    name: "Royal Mail",
+    addr: F("delivery@royalmail-fee.co.uk", "Royal Mail uses royalmail.com. “royalmail-fee.co.uk” is a lookalike domain made up for this scam."),
+    color: "#dc2626",
+    date: "Wed 7 Oct, 07:56",
     subject: "Your parcel is waiting – unpaid fee",
     body: `
     <img src="images/rm logo.webp" class="left" width="100" height="100" alt="royal mail logo">
-    <p>Your parcel is being held due to an unpaid fee of £1.99.</p>
-    <p>Please pay now to release your delivery.</p>
-    <p><a href="#">Pay Fee</a></p>
+    <p>Your parcel is being held due to an ${F("unpaid fee of £1.99", "Tiny “fees” are a common scam to steal your card details.")}.</p>
+    <p>${F("Please pay now", "Pressure to act immediately is a classic phishing tactic.")} to release your delivery.</p>
+    <p>${L("Pay Fee", "http://royalmail-fee.co.uk/pay?ref=RM88213", "Not royalmail.com. This leads to a fake card payment page.")}</p>
     `,
-    isPhish: true
+    isPhish: true,
+    why: "Phishing: a lookalike Royal Mail domain, a small fee, and pressure to pay now. Real fees are paid through royalmail.com, not an emailed link."
   },
   {
-    from: "NHS Appointments noreply@nhs.net",
+    name: "NHS Appointments",
+    addr: "noreply@nhs.net",
+    color: "#005eb8",
+    date: "Wed 7 Oct, 08:30",
     subject: "Appointment Reminder",
     body: `
     <img src="images/nhs.png" class="left" width="100" height="110" alt="nhs logo">
     <p>This is a reminder for your upcoming appointment.</p>
     <p>If you need to cancel or reschedule, please use the NHS App.</p>
     `,
-    isPhish: false
+    isPhish: false,
+    why: "Legit: it comes from nhs.net, contains no links or payment requests, and sends you to the official NHS App instead."
   },
   {
-    from: "Apple Support security@appleid-lock.com",
+    name: "Apple Support",
+    addr: F("security@appleid-lock.com", "Apple emails come from apple.com. Extra words like “-lock” in the domain are a giveaway."),
+    color: "#374151",
+    date: "Wed 7 Oct, 13:20",
     subject: "Your Apple ID has been locked",
     body: `
     <img src="images/apple.jpg" class="left" width="100" height="100" alt="apple logo">
-   <p>We detected suspicious activity on your Apple ID.</p>
+    <p>${F("We detected suspicious activity on your Apple ID.", "Fear tactic: scammers invent a problem so you panic and click.")}</p>
     <p>Your account has been locked for your safety.</p>
-    <p><a href="#">Unlock Account</a></p>
+    <p>${L("Unlock Account", "http://appleid-lock.com/unlock", "Goes to appleid-lock.com, not apple.com. It would steal your Apple ID login.")}</p>
     `,
-    isPhish: true
+    isPhish: true,
+    why: "Phishing: a lookalike domain, a scary “account locked” message, and an unlock link that goes to the same fake domain."
   },
   {
-    from: "Amazon no-reply@amazon.co.uk",
+    name: "Amazon",
+    addr: "no-reply@amazon.co.uk",
+    color: "#f59e0b",
+    date: "Thu 8 Oct, 10:05",
     subject: "Your Amazon order has been dispatched",
     body: `
     <img src="images/Amazon.png" class="center" width="100" height="100" alt="amazon logo">
     <p>Your order has been dispatched and will arrive tomorrow.</p>
-    <p>Track your parcel in Your Orders.</p>
+    <p>Track your parcel in ${L("Your Orders", "https://www.amazon.co.uk/gp/css/order-history")}.</p>
     `,
-    isPhish: false
+    isPhish: false,
+    why: "Legit: genuine amazon.co.uk sender, a link that goes to amazon.co.uk, and no request for payment or login details."
   },
   {
-    from: "HMRC refund@tax-service-gov.uk",
+    name: "HMRC",
+    addr: F("refund@tax-service-gov.uk", "Real HMRC emails end in hmrc.gov.uk. “tax-service-gov.uk” only imitates a government address."),
+    color: "#1e3a8a",
+    date: "Thu 8 Oct, 15:48",
     subject: "You are owed a tax refund",
     body: `
     <img src="images/HMRC-Logo.png" class="left" width="100" height="100" alt="hmrc logo">
-    <p>After our annual review, you are eligible for a tax refund of £274.19 from 2020 to 2021.</p>
-    <p> Follow the instructions to claim your tax refund below.</p>
-    <p>You <u>MUST</u> Submit your claim within 48 hours.</p>
-    <p><a href="#">Claim Refund</a></p>
+    <p>After our annual review, ${F("you are eligible for a tax refund of £274.19", "Unexpected money. HMRC doesn’t email refund offers or ask you to claim through a link.")} from 2020 to 2021.</p>
+    <p>Follow the instructions to claim your tax refund below.</p>
+    <p>You ${F("<u>MUST</u> Submit your claim within 48 hours", "Artificial deadline and shouting capitals. A random capital “S” in “Submit” is another sign of rushed writing.")}.</p>
+    <p>${L("Claim Refund", "http://tax-service-gov.uk/refund/claim", "Goes to the fake tax-service-gov.uk site, not gov.uk.")}</p>
     `,
-    isPhish: true
+    isPhish: true,
+    why: "Phishing: a fake government domain, an unexpected refund, a 48-hour deadline, and a link to a non-gov.uk site."
   },
   {
-    from: "Netflix info@account.netflix.com",
+    name: "Netflix",
+    addr: "info@account.netflix.com",
+    color: "#e50914",
+    date: "Fri 9 Oct, 06:33",
     subject: "Update required - Netflix account on hold",
     body: `
     <img src="images/netflix-logo.jpg" class="center" width="150" height="150" alt="netflix logo">
     <p><b>Please update your payment details.</b></p>
     <p>We're having some trouble with your current billing information. We'll try again, but in the meantime you may want to update your payment details.</p>
-    <p><a href="#">Update Account Now</a></p>
+    <p>${L("Update Account Now", "https://www.netflix.com/youraccount")}</p>
     `,
-    isPhish: false
+    isPhish: false,
+    why: "Legit: the sender is a real netflix.com subdomain, the link goes to netflix.com, and the tone is calm. Even so, the safest habit is to open the app or site yourself."
   },
   {
-    from: "Coleg Sir Gâr info@colegsirgar.ac.uk",
+    name: "Coleg Sir Gâr",
+    addr: "info@colegsirgar.ac.uk",
+    color: "#7c3aed",
+    date: "Fri 9 Oct, 09:12",
     subject: "Important student notice",
     body: `
     <img src="images/colegsirgar.png" class="left" width="150" height="150" alt="welsh college logo">
     <p>We have updated our student handbook for the new term.</p>
     <p>Please review the changes on the student portal.</p>
     `,
-    isPhish: false
+    isPhish: false,
+    why: "Legit: it comes from the college’s own .ac.uk domain, has no suspicious links, and points you to the student portal rather than asking for details."
   },
   {
-    from: "rnicrosoft Account no-reply@microsoft.com",
-    subject: "Your microsoft account password is expiring soon",
+    name: F("rnicrosoft Account", "“rn” has been swapped in for “m”, so “rnicrosoft” looks like “Microsoft” at a glance."),
+    initial: "M",
+    addr: F("no-reply@rnicrosoft.com", "The domain is rnicrosoft.com (r + n), not microsoft.com."),
+    color: "#f25022",
+    date: "Fri 9 Oct, 14:27",
+    subject: `Your ${F("microsoft", "Microsoft’s name is capitalised. Small slips like this are common in phishing emails.")} account password is expiring soon`,
     body: `
     <img src="images/outlook2.png" class="left" width="150" height="150" alt="outlook logo">
     <h2>Password Expiry Notification</h2>
-    <p>Dear User,</p>
-    <p>This is a courtesy reminder that your Microsoft account password will expire in <strong>3 days</strong>.</p>
+    <p>${F("Dear User", "Generic greeting. A real provider would use your name.")},</p>
+    <p>This is a courtesy reminder that your Microsoft account password will ${F("expire in <strong>3 days</strong>", "Artificial deadline to rush you into clicking. Microsoft doesn’t work this way.")}.</p>
     <p>To maintain access to Outlook, OneDrive, and other Microsoft services, please update your password before it expires.</p>
-    <p><a href="https://account.microsoft.com/security" target="_blank" rel="noopener noreferrer">Update Password</a></p>
-    <p>Thank you for helping us keep your account secure.</p>
-    <p>— Microsoft Account Team</p>
+    <p>${L("Update Password", "http://rnicrosoft-account.com/security", "Goes to rnicrosoft-account.com, a lookalike domain, not microsoft.com.")}</p>
+    <p>Thank you for helping us keep your account secure.<br>— Microsoft Account Team</p>
     `,
-    isPhish: true
+    isPhish: true,
+    why: "Phishing: “rnicrosoft” imitates Microsoft using “rn” for “m”. It also uses a generic greeting, a deadline, and a link to a lookalike domain."
   }
 ];
 
