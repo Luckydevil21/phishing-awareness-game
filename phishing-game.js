@@ -66,10 +66,16 @@ function getRandomPositiveTip() {
 
 let index = 0;
 let correct = 0;
+let score = 0;
 let streak = 0;
 let bestStreak = 0;
 let answered = false;
 let foundFlags = new Set();
+
+// Scoring: right call = VERDICT_POINTS. Phishing emails add up to FLAG_POINTS more,
+// scaled by how many red flags were found. Flag points only count if the call was right.
+const VERDICT_POINTS = 60;
+const FLAG_POINTS = 40;
 
 const screens = {
   home: document.getElementById("screen-home"),
@@ -172,7 +178,6 @@ function buildDebrief(email) {
   flags.forEach(f => f.classList.add(foundFlags.has(f) ? "found" : "missed"));
 
   const out = [email.why];
-  if (flags.length) out.push(`You spotted ${flags.length - missed.length} of ${flags.length} red flags.`);
   missed.forEach(f => out.push("Missed: " + f.dataset.tip));
   return out;
 }
@@ -221,16 +226,31 @@ function handleAnswer(guessPhish) {
 
   const email = emails[index];
   const isCorrect = email.isPhish === guessPhish;
+  const flagTotal = emailCard.querySelectorAll(".flag").length;
+  const flagsFound = foundFlags.size;
   const details = buildDebrief(email);
 
   if (isCorrect) {
+    const flagPoints = flagTotal ? Math.round(FLAG_POINTS * flagsFound / flagTotal) : 0;
+    const earned = VERDICT_POINTS + flagPoints;
+    score += earned;
     correct++;
     streak++;
     if (streak > bestStreak) bestStreak = streak;
+
+    details.splice(1, 0, flagTotal
+      ? `+${earned} points: ${VERDICT_POINTS} for the right call and ${flagPoints} for finding ${flagsFound} of ${flagTotal} red flags.`
+      : `+${earned} points for the right call.`);
+
     playCorrectSound();
     showTip("Correct! " + getRandomPositiveTip(), details);
   } else {
     streak = 0;
+
+    details.splice(1, 0, flagTotal
+      ? `+0 points. You found ${flagsFound} of ${flagTotal} red flags, but they only score when you make the right call.`
+      : "+0 points.");
+
     triggerPoliceAlert();
     setTimeout(() => {
       showTip("Incorrect. " + getRandomTip(), details);
@@ -247,7 +267,9 @@ document.getElementById("btn-phish").onclick = () => handleAnswer(true);
 function showResults() {
   showScreen("results");
   const accuracy = Math.round((correct / emails.length) * 100);
-  document.getElementById("final-score").textContent = `${correct} / ${emails.length}`;
+  const flagged = emails.filter(e => `${e.name}${e.addr}${e.subject}${e.body}`.includes('class="flag"')).length;
+  const maxScore = emails.length * VERDICT_POINTS + flagged * FLAG_POINTS;
+  document.getElementById("final-score").textContent = `${score} / ${maxScore}`;
   document.getElementById("final-accuracy").textContent = `${accuracy}%`;
   document.getElementById("final-streak").textContent = bestStreak;
 }
@@ -260,6 +282,7 @@ document.getElementById("start-btn").onclick = () => {
   correct = 0;
   streak = 0;
   bestStreak = 0;
+  score = 0;
   answered = false;
 
   shuffle(emails);
@@ -536,7 +559,7 @@ document.getElementById("end-btn").onclick = async () => {
   const accuracy = Math.round((correct / emails.length) * 100);
 
   try {
-    await submitScore(name, correct, accuracy, bestStreak);
+    await submitScore(name, score, accuracy, bestStreak);
   } catch {}
 
   await loadLeaderboard();
