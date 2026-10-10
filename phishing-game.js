@@ -71,11 +71,13 @@ let streak = 0;
 let bestStreak = 0;
 let answered = false;
 let foundFlags = new Set();
+let wastedTaps = 0;
 
 // Scoring: right call = VERDICT_POINTS. Phishing emails add up to FLAG_POINTS more,
 // scaled by how many red flags were found. Flag points only count if the call was right.
 const VERDICT_POINTS = 60;
 const FLAG_POINTS = 40;
+const WRONG_TAP_PENALTY = 3; // taken off for each tap on something that isn't a red flag
 
 const screens = {
   home: document.getElementById("screen-home"),
@@ -101,6 +103,7 @@ const DEFAULT_STATUS = "Hover over a link to see where it really goes";
 function loadEmail() {
   const email = emails[index];
   foundFlags = new Set();
+  wastedTaps = 0;
 
   const initial = (email.initial || email.name.replace(/<[^>]*>/g, "").trim().charAt(0)).toUpperCase();
 
@@ -138,7 +141,9 @@ function setStatus(url) {
 }
 
 function updateFlagCount() {
-  document.getElementById("flag-count").textContent = "🚩 " + foundFlags.size;
+  const penalty = wastedTaps * WRONG_TAP_PENALTY;
+  document.getElementById("flag-count").textContent =
+    "🚩 " + foundFlags.size + (penalty ? "  −" + penalty : "");
 }
 
 // Hovering a link shows where it REALLY goes (never navigates anywhere)
@@ -165,8 +170,17 @@ emailCard.addEventListener("click", e => {
     flag.classList.remove("missed");
     updateFlagCount();
     setInspector("🚩 " + flag.dataset.tip, "is-flag");
+  } else if (link) {
+    // checking a link's destination is free: the real URL is in the bar below
+    setInspector("The real destination is shown in the bar below. Judge it for yourself.", "");
   } else if (e.target.closest(".email-body, .email-sender, .email-subject")) {
-    setInspector("Nothing suspicious about that.", "is-ok");
+    if (answered) {
+      setInspector("Nothing suspicious about that.", "is-ok");
+    } else {
+      wastedTaps++;
+      updateFlagCount();
+      setInspector(`Nothing suspicious about that. −${WRONG_TAP_PENALTY} points`, "is-ok");
+    }
   }
 });
 
@@ -232,15 +246,17 @@ function handleAnswer(guessPhish) {
 
   if (isCorrect) {
     const flagPoints = flagTotal ? Math.round(FLAG_POINTS * flagsFound / flagTotal) : 0;
-    const earned = VERDICT_POINTS + flagPoints;
+    const penalty = wastedTaps * WRONG_TAP_PENALTY;
+    const earned = Math.max(0, VERDICT_POINTS + flagPoints - penalty);
     score += earned;
     correct++;
     streak++;
     if (streak > bestStreak) bestStreak = streak;
 
-    details.splice(1, 0, flagTotal
+    const penaltyNote = penalty ? ` Minus ${penalty} for ${wastedTaps} taps that found nothing.` : "";
+    details.splice(1, 0, (flagTotal
       ? `+${earned} points: ${VERDICT_POINTS} for the right call and ${flagPoints} for finding ${flagsFound} of ${flagTotal} red flags.`
-      : `+${earned} points for the right call.`);
+      : `+${earned} points for the right call.`) + penaltyNote);
 
     playCorrectSound();
     showTip("Correct! " + getRandomPositiveTip(), details);
